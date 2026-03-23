@@ -953,3 +953,161 @@ func (d *Debugger) GetAdapterVersion() string {
         defer d.mu.RUnlock()
         return d.adapter.GetVersion()
 }
+
+// GetAdapterName returns the adapter name
+func (d *Debugger) GetAdapterName() string {
+        d.mu.RLock()
+        defer d.mu.RUnlock()
+        return d.adapter.GetName()
+}
+
+// Attach attaches to a running process
+func (d *Debugger) Attach(ctx context.Context, pid int) error {
+        d.mu.Lock()
+        defer d.mu.Unlock()
+
+        if err := d.adapter.Attach(pid); err != nil {
+                return fmt.Errorf("failed to attach to process %d: %w", pid, err)
+        }
+
+        d.running = true
+        d.emitEvent(Event{
+                Type:      EventStateChanged,
+                Timestamp: time.Now(),
+                Data:      d.GetState(),
+        })
+
+        return nil
+}
+
+// IsRunning returns whether the debugger is running
+func (d *Debugger) IsRunning() bool {
+        d.mu.RLock()
+        defer d.mu.RUnlock()
+        return d.running
+}
+
+// RemoveBreakpoint removes a breakpoint by ID
+func (d *Debugger) RemoveBreakpoint(id int) error {
+        d.mu.Lock()
+        defer d.mu.Unlock()
+
+        if err := d.adapter.RemoveBreakpoint(id); err != nil {
+                return fmt.Errorf("remove breakpoint failed: %w", err)
+        }
+
+        d.stateModel.RemoveBreakpoint(id)
+        return nil
+}
+
+// GetThreads returns all threads
+func (d *Debugger) GetThreads() ([]ThreadInfo, error) {
+        d.mu.RLock()
+        defer d.mu.RUnlock()
+
+        threads, err := d.stateModel.GetAllThreads(100)
+        if err != nil {
+                return nil, err
+        }
+
+        result := make([]ThreadInfo, len(threads))
+        for i, t := range threads {
+                result[i] = ThreadInfo{
+                        ID:     t.ID,
+                        Name:   t.Name,
+                        State:  t.State.String(),
+                        IsMain: t.IsMain,
+                }
+        }
+        return result, nil
+}
+
+// SetActiveThread sets the active thread
+func (d *Debugger) SetActiveThread(threadID int) error {
+        d.mu.Lock()
+        defer d.mu.Unlock()
+        return d.adapter.SetActiveThread(threadID)
+}
+
+// SetActiveFrame sets the active stack frame
+func (d *Debugger) SetActiveFrame(frameID int) error {
+        d.mu.Lock()
+        defer d.mu.Unlock()
+        return d.adapter.SetActiveFrame(frameID)
+}
+
+// GetSource returns source code lines
+func (d *Debugger) GetSource(file string, startLine, endLine int) ([]string, error) {
+        d.mu.RLock()
+        defer d.mu.RUnlock()
+
+        if startLine <= 0 {
+                startLine = 1
+        }
+        if endLine <= 0 {
+                endLine = startLine + 20
+        }
+
+        ctx, err := d.adapter.GetSource(file, startLine, endLine)
+        if err != nil {
+                return nil, err
+        }
+
+        lines := make([]string, len(ctx.Lines))
+        for i, l := range ctx.Lines {
+                lines[i] = l.Content
+        }
+        return lines, nil
+}
+
+// GetStateSummaryJSON returns the state summary as JSON
+func (d *Debugger) GetStateSummaryJSON() (string, error) {
+        summary := d.GetStateSummary()
+        data, err := json.MarshalIndent(summary, "", "  ")
+        if err != nil {
+                return "", err
+        }
+        return string(data), nil
+}
+
+// GetExecutionContext returns context needed for AI to understand the execution
+func (d *Debugger) GetExecutionContext(ctx context.Context) (map[string]interface{}, error) {
+        d.mu.RLock()
+        defer d.mu.RUnlock()
+
+        result := make(map[string]interface{})
+
+        // Current state
+        state := d.GetState()
+        result["state"] = state
+
+        // Summary
+        summary := d.GetStateSummary()
+        result["summary"] = summary
+
+        // Current source context
+        if state.CurrentLocation != nil {
+                lines, err := d.GetSource(state.CurrentLocation.File,
+                        state.CurrentLocation.Line-5,
+                        state.CurrentLocation.Line+5)
+                if err == nil {
+                        result["source_context"] = lines
+                }
+        }
+
+        return result, nil
+}
+
+// GetExecutionContextJSON returns the execution context as JSON
+func (d *Debugger) GetExecutionContextJSON(ctx context.Context) (string, error) {
+        context, err := d.GetExecutionContext(ctx)
+        if err != nil {
+                return "", err
+        }
+
+        data, err := json.MarshalIndent(context, "", "  ")
+        if err != nil {
+                return "", err
+        }
+        return string(data), nil
+}

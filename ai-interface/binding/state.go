@@ -255,7 +255,7 @@ func (m *StateModel) AddBreakpoint(bp *Breakpoint) (int, error) {
 	
 	id := C.md_state_add_breakpoint(m.model, &cbp)
 	if id < 0 {
-		return -1, cError(id)
+		return -1, cError(C.md_error_t(id))
 	}
 	bp.ID = int(id)
 	return int(id), nil

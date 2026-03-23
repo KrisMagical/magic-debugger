@@ -131,7 +131,7 @@ func (d *Debugger) GetStateSummary() StateSummary {
 		Timestamp: time.Now(),
 	}
 
-	if d.debugger == nil {
+	if d.adapter == nil {
 		return summary
 	}
 
@@ -141,8 +141,6 @@ func (d *Debugger) GetStateSummary() StateSummary {
 	summary.ExecutionState = string(state.ExecutionState)
 	summary.StopReason = state.StopReason
 	summary.StopDescription = state.StopDescription
-	summary.TotalSteps = state.TotalSteps
-	summary.TotalBreakpointHits = state.TotalBreakpointHits
 	summary.HasException = state.Exception != nil
 
 	if state.CurrentLocation != nil {

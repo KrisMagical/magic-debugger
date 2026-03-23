@@ -87,7 +87,7 @@ func main() {
 	wsServer := server.NewWSServer(wsConfig, debugger)
 
 	// Handle shutdown gracefully
-	ctx, cancel := context.WithCancel(context.Background())
+	_, cancel := context.WithCancel(context.Background())
 	shutdownCh := make(chan os.Signal, 1)
 	signal.Notify(shutdownCh, syscall.SIGINT, syscall.SIGTERM)
 
